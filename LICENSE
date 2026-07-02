@@ -1,0 +1,24 @@
+# Licensing for Rapid SCADA Communication Drivers
+
+## 1. DrvSigModbus
+This driver is licensed under the **Apache License, Version 2.0**.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+## 2. DrvSigPccc and DrvSig7
+These drivers are **proprietary commercial software**.
+
+### License Tiers
+- **Trial** – Limited to 10 tags. No time limit. For evaluation only.
+- **Personal** – Limited to 100 tags. For individuals and small projects.
+- **Professional** – Limited to 500 tags. For industrial and commercial use.
+- **Enterprise** – Unlimited tags. For large‑scale deployments and system integrators.
+
+### Terms
+- You may use the trial version (limited to 10 tags) for evaluation purposes only.
+- For production use, you must purchase a **Personal, Professional, or Enterprise** license.
+- Each license is hardware‑locked to a single machine.
+- You are not permitted to redistribute, reverse engineer, or modify these drivers.
+- Redistribution of the binaries is only allowed as part of the official release package from this repository.
+
+For licensing inquiries, pricing, or to purchase a license:
+📧 Email: ketut.kumajaya@gmail.com

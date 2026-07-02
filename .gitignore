@@ -1,0 +1,36 @@
+# Ignore compiled binary folders
+**/bin/
+**/obj/
+
+# Ignore binary files
+*.dll
+*.exe
+*.pdb
+
+# Ignore license files
+*.lic
+
+# Ignore archive files
+*.zip
+*.7z
+*.rar
+
+# Ignore driver binaries
+**/DrvSigModbus/
+**/DrvSigPccc/
+**/DrvSig7/
+
+# Ignore Visual Studio temporary files
+.vs/
+*.user
+*.suo
+
+# Ignore NuGet packages (optional)
+packages/
+
+# Ignore build output folders
+**/BuildOutput/
+Publish/
+
+# Ignore log files
+*.log

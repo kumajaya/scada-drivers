@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DrvSig7 Example Template – demonstrates best practices for the PollBlock-based driver.
+  - All active elements within the same DB (or I/O area) are placed in a single group
+    to minimize round‑trips (one ReadArea call per DB).
+  - Scaling, bit addressing, string types, and commands are shown.
+  - Inactive groups are kept for reference but skipped at runtime.
+-->
+<DeviceTemplate>
+  <ElemGroups>
+    <!--
+      GROUP: DB100 – Process values and discrete signals (combined into one group
+      because they share the same DB). The driver will read a single contiguous
+      block from offset 0 up to the highest offset needed.
+    -->
+    <ElemGroup active="true" name="DB100 Process &amp; Discrete" area="DB" dbNumber="100">
+      <!-- Analog values (REAL) with linear scaling (raw → engineering) -->
+      <Elem type="real" byteOffset="0"  scaling="0;27648;0;1000" tagCode="FI_101"  name="Flow rate" />
+      <Elem type="real" byteOffset="4"  scaling="0;27648;0;10"   tagCode="PIC_201" name="Column pressure" />
+      <Elem type="real" byteOffset="8"  tagCode="TI_301"  name="Cold box temp" />
+      <Elem type="word" byteOffset="12" tagCode="SI_401"  name="Comp speed" />
+      <Elem type="int"  byteOffset="14" scaling="0;27648;0;100" tagCode="ZI_501" name="Valve position" />
+
+      <!-- Discrete inputs packed as BOOL with bit addressing -->
+      <Elem type="bool" byteOffset="20" bitIndex="0" tagCode="XS_601" name="Pump run" />
+      <Elem type="bool" byteOffset="20" bitIndex="1" tagCode="XS_602" name="Pump fault" />
+      <Elem type="bool" byteOffset="20" bitIndex="2" tagCode="LAH_701" name="Level hi alarm" />
+      <Elem type="bool" byteOffset="21" bitIndex="0" tagCode="XS_801" name="E-stop active" />
+      <Elem type="bool" byteOffset="21" bitIndex="1" tagCode="XS_802" name="System ready" />
+
+      <!-- Command outputs (read-back from PLC) as DWORD for packed bits -->
+      <Elem type="dword" byteOffset="22" tagCode="DO_PACKED" name="Packed DO states" />
+    </ElemGroup>
+
+    <!--
+      GROUP: DB101 – High‑precision values (S7‑1200/1500 only). Inactive by default.
+      Demonstrates LREAL and DINT types.
+    -->
+    <ElemGroup active="false" name="DB101 High precision" area="DB" dbNumber="101">
+      <Elem type="lreal" byteOffset="0"  tagCode="FI_102_HR" name="Flow rate (LReal)" />
+      <Elem type="dint"  byteOffset="8"  tagCode="CNT_HR"    name="Production counter" />
+    </ElemGroup>
+
+    <!--
+      GROUP: DB200 – Alarm and status text strings (S7 STRING).
+      Two strings of max length 40 characters each.
+    -->
+    <ElemGroup active="true" name="DB200 Alarm messages" area="DB" dbNumber="200">
+      <Elem type="string" byteOffset="0"  strLen="40" tagCode="MSG_ALARM"  name="Active alarm text" />
+      <Elem type="string" byteOffset="42" strLen="40" tagCode="MSG_STATUS" name="System status text" />
+    </ElemGroup>
+
+    <!--
+      GROUP: Process Image Inputs (PE) – digital and byte inputs.
+      For S7‑300/400, these are typically addressed as PIW/PIB.
+      All elements share area=PE, so they are merged into one ReadArea.
+    -->
+    <ElemGroup active="true" name="Process Inputs (PE)" area="PE">
+      <Elem type="bool" byteOffset="0" bitIndex="0" tagCode="I0_0" name="Input I0.0" />
+      <Elem type="bool" byteOffset="0" bitIndex="1" tagCode="I0_1" name="Input I0.1" />
+      <Elem type="byte" byteOffset="1" tagCode="IB1"   name="Input byte IB1" />
+      <Elem type="word" byteOffset="2" tagCode="IW2"   name="Input word IW2" />
+    </ElemGroup>
+
+    <!--
+      GROUP: Process Image Outputs (PA) – digital outputs.
+      For S7‑300/400, these are typically addressed as PQW/PQB.
+    -->
+    <ElemGroup active="true" name="Process Outputs (PA)" area="PA" startByte="16">
+      <!-- startByte=16 means physical address starts at QW16 -->
+      <Elem type="word" byteOffset="0" tagCode="QW16" name="Output word QW16" />
+      <Elem type="bool" byteOffset="2" bitIndex="0" tagCode="Q18.0" name="Output bit Q18.0" />
+    </ElemGroup>
+
+    <!--
+      GROUP: DB30 – PID controller parameters (PV, SV, output).
+      Demonstrates how to structure a DB with real values.
+    -->
+    <ElemGroup active="true" name="DB30 PID Controller" area="DB" dbNumber="30">
+      <Elem type="real" byteOffset="6"  tagCode="R2-S6_SV-2" name="Setpoint (SV)" />
+      <Elem type="real" byteOffset="14" tagCode="R2-S6_PV-2" name="Process value (PV)" />
+      <Elem type="real" byteOffset="40" tagCode="R2-S6-2"    name="Controller output" />
+    </ElemGroup>
+  </ElemGroups>
+
+  <Cmds>
+    <!-- Commands are dispatched by Rapid SCADA command number (cmdNum) or code (cmdCode). -->
+
+    <!-- Write REAL setpoint to DB100, with inverse scaling (engineering → raw) -->
+    <Cmd name="Flow setpoint" cmdNum="1" cmdCode="SET_FLOW"
+         area="DB" dbNumber="100" byteOffset="30" type="real"
+         scaling="0;27648;0;10000" />
+
+    <!-- Write REAL pressure setpoint to DB100 -->
+    <Cmd name="Pressure setpoint" cmdNum="2" cmdCode="SET_PRES"
+         area="DB" dbNumber="100" byteOffset="34" type="real"
+         scaling="0;27648;0;10" />
+
+    <!-- Write BOOL to DB100 (toggle valve open) -->
+    <Cmd name="Open valve" cmdNum="3" cmdCode="VALVE_OPEN"
+         area="DB" dbNumber="100" byteOffset="40" type="bool" bitIndex="0" />
+
+    <!-- Write WORD to DB100 (batch counter reset) -->
+    <Cmd name="Batch counter reset" cmdNum="4" cmdCode="RESET_CNT"
+         area="DB" dbNumber="100" byteOffset="42" type="word" />
+
+    <!-- Write STRING to DB200 (operator message) – uses WriteArea for reliability -->
+    <Cmd name="Operator message" cmdNum="5" cmdCode="SET_MSG"
+         area="DB" dbNumber="200" byteOffset="84" type="string" strLen="40" />
+
+    <!-- Write REAL to DB30 (setpoint of PID controller) -->
+    <Cmd name="PID setpoint" cmdNum="6" cmdCode="SET_PID_SV"
+         area="DB" dbNumber="30" byteOffset="6" type="real" />
+  </Cmds>
+</DeviceTemplate>

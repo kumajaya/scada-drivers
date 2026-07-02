@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="utf-8"?>
+<DeviceTemplate>
+  <!--
+    ======================================================================
+    GENERAL PRINCIPLES (Read This First)
+    ======================================================================
+
+    1. Physical Batching (Global Flatten + Sort):
+       The driver performs a global flatten and physical-address sort of ALL
+       <Elem> elements across ALL active <ReadGroup> containers.
+       This means:
+         - <ReadGroup> names are purely for UI organization and do NOT
+           affect how tags are batched.
+         - Elements from different <ReadGroup> containers that sit next to
+           each other in PLC memory will be merged into a single physical
+           PCCC read request.
+
+    2. MaxMergeGap:
+       Controlled via the line option "MaxMergeGap" (default: 8).
+         - 0 = only perfectly contiguous addresses are merged.
+         - Larger values = more aggressive merging (fewer requests, but
+           more wasted slots read across gaps).
+       The driver never requests data beyond the highest address defined in
+       this template, regardless of the MaxMergeGap value.
+
+    3. Bit vs Word Addressing:
+       The driver automatically detects bit-addressed elements
+       (e.g., "B3:0/5"). It calculates the exact minimum number of
+       16-bit words needed to cover the bit span and reads them efficiently
+       using raw word reads, ensuring robust communication.
+
+    4. Data Type Mapping:
+         - UShort    : 16-bit unsigned integer (word).
+         - Short     : 16-bit signed integer.
+         - Int/Long  : 32-bit signed integer (L file).
+         - Float     : 32-bit IEEE 754 floating-point (F file).
+         - String    : SLC/MicroLogix string file (ST file, 84 bytes).
+         - Bool      : Single bit (extracted from word/bit addressing).
+
+    5. Scaling (Linear Scaling):
+      Format: "minRaw;maxRaw;minEng;maxEng"
+      Values are separated by semicolons (;).
+
+        - minRaw   : Minimum raw value from the PLC (e.g., 0).
+        - maxRaw   : Maximum raw value from the PLC (e.g., 65535 for a 16-bit word).
+        - minEng   : Minimum engineering value displayed in SCADA (e.g., 0).
+        - maxEng   : Maximum engineering value displayed in SCADA (e.g., 100).
+
+      How it works:
+        - On READ: The driver applies scaling to convert the Raw value to Engineering
+          before sending it to SCADA.
+        - On WRITE (Commands): The driver applies reverse scaling (Engineering -> Raw)
+          to calculate the value to write to the PLC.
+
+      Example:
+        scaling="0;65535;0;100"
+          Raw 0      -> Eng 0.0
+          Raw 32767  -> Eng 50.0
+          Raw 65535  -> Eng 100.0
+
+        scaling="0;4095;0;100"   (used for 12-bit ADC values)
+        scaling="-500;1500;-500;1500" (used for pressure/level with offset)
+
+      If omitted, no scaling is applied (raw values are passed directly).
+    ======================================================================
+  -->
+
+  <ReadGroups>
+
+    <!--
+      GROUP: Integer N7 (UShort)
+      Elements are perfectly contiguous (N7:0 to N7:7).
+      With MaxMergeGap >= 0, these are merged into a single read request
+      reading exactly 8 words (SpanCount=8) with no wasted slots.
+    -->
+    <ReadGroup active="true" name="Integer N7 (UShort)">
+      <Elem name="N7_0" tagCode="N7_0" address="N7:0" dataType="ushort" scaling="0;65535;0;100" />
+      <Elem name="N7_1" tagCode="N7_1" address="N7:1" dataType="ushort" scaling="0;65535;0;100" />
+      <Elem name="N7_2" tagCode="N7_2" address="N7:2" dataType="ushort" scaling="0;65535;0;100" />
+      <Elem name="N7_3" tagCode="N7_3" address="N7:3" dataType="ushort" scaling="0;65535;0;100" />
+      <Elem name="N7_4" tagCode="N7_4" address="N7:4" dataType="ushort" scaling="0;65535;0;5000" />
+      <Elem name="N7_5" tagCode="N7_5" address="N7:5" dataType="ushort" scaling="0;65535;0;5000" />
+      <Elem name="N7_6" tagCode="N7_6" address="N7:6" dataType="ushort" scaling="0;65535;0;5000" />
+      <Elem name="N7_7" tagCode="N7_7" address="N7:7" dataType="ushort" scaling="0;65535;0;5000" />
+    </ReadGroup>
+
+    <!--
+      GROUP: Binary B3 (word)
+      Even though these are displayed as bitmasks in the SCADA UI,
+      they are read as whole 16-bit words. They are perfectly contiguous
+      (B3:0 to B3:7), so they will be read in a single request.
+    -->
+    <ReadGroup active="true" name="Binary B3 (word)">
+      <Elem name="B3_0" tagCode="B3_0" address="B3:0" dataType="ushort" isBitMask="true" />
+      <Elem name="B3_1" tagCode="B3_1" address="B3:1" dataType="ushort" isBitMask="true" />
+      <Elem name="B3_2" tagCode="B3_2" address="B3:2" dataType="ushort" isBitMask="true" />
+      <Elem name="B3_3" tagCode="B3_3" address="B3:3" dataType="ushort" isBitMask="true" />
+      <Elem name="B3_4" tagCode="B3_4" address="B3:4" dataType="ushort" isBitMask="true" />
+      <Elem name="B3_5" tagCode="B3_5" address="B3:5" dataType="ushort" isBitMask="true" />
+      <Elem name="B3_6" tagCode="B3_6" address="B3:6" dataType="ushort" isBitMask="true" />
+      <Elem name="B3_7" tagCode="B3_7" address="B3:7" dataType="ushort" isBitMask="true" />
+    </ReadGroup>
+
+    <!--
+      GROUP: Float F8
+      Elements are contiguous (F8:0 to F8:7). Even though Float takes
+      4 bytes (2 words) per element, the driver sorts and batches them
+      correctly, reading a contiguous block from the PLC in one request.
+    -->
+    <ReadGroup active="true" name="Float F8">
+      <Elem name="F8_0" tagCode="F8_0" address="F8:0" dataType="float" />
+      <Elem name="F8_1" tagCode="F8_1" address="F8:1" dataType="float" />
+      <Elem name="F8_2" tagCode="F8_2" address="F8:2" dataType="float" />
+      <Elem name="F8_3" tagCode="F8_3" address="F8:3" dataType="float" />
+      <Elem name="F8_4" tagCode="F8_4" address="F8:4" dataType="float" />
+      <Elem name="F8_5" tagCode="F8_5" address="F8:5" dataType="float" />
+      <Elem name="F8_6" tagCode="F8_6" address="F8:6" dataType="float" />
+      <Elem name="F8_7" tagCode="F8_7" address="F8:7" dataType="float" />
+    </ReadGroup>
+
+    <!--
+      GROUP: Long L20
+      Long (32-bit integer) files are contiguous. Each element spans
+      2 words (4 bytes). The driver correctly handles this alignment.
+    -->
+    <ReadGroup active="true" name="Long L20">
+      <Elem name="L20_0" tagCode="L20_0" address="L20:0" dataType="long" />
+      <Elem name="L20_1" tagCode="L20_1" address="L20:1" dataType="long" />
+    </ReadGroup>
+
+    <!--
+      GROUP: String ST21
+      String files are read using ReadAny() rather than ReadAnyValues().
+      This is handled automatically by the driver based on DataType="string".
+    -->
+    <ReadGroup active="true" name="String ST21">
+      <Elem name="ST21_0" tagCode="ST21_0" address="ST21:0" dataType="string" />
+    </ReadGroup>
+
+    <!--
+      GROUP: Timer T4 PRE
+      Timer PRESET values. The driver sorts by SubElement.
+      PRE has SubElement=1, so these are grouped together.
+      ACC has SubElement=2, so those are grouped separately.
+      This ensures efficient reading of Timer structured elements.
+    -->
+    <ReadGroup active="true" name="Timer T4 PRE">
+      <Elem name="T4_0_PRE" tagCode="T4_0_PRE" address="T4:0.PRE" dataType="ushort" />
+      <Elem name="T4_1_PRE" tagCode="T4_1_PRE" address="T4:1.PRE" dataType="ushort" />
+      <Elem name="T4_2_PRE" tagCode="T4_2_PRE" address="T4:2.PRE" dataType="ushort" />
+      <Elem name="T4_3_PRE" tagCode="T4_3_PRE" address="T4:3.PRE" dataType="ushort" />
+      <Elem name="T4_4_PRE" tagCode="T4_4_PRE" address="T4:4.PRE" dataType="ushort" />
+      <Elem name="T4_5_PRE" tagCode="T4_5_PRE" address="T4:5.PRE" dataType="ushort" />
+      <Elem name="T4_6_PRE" tagCode="T4_6_PRE" address="T4:6.PRE" dataType="ushort" />
+      <Elem name="T4_7_PRE" tagCode="T4_7_PRE" address="T4:7.PRE" dataType="ushort" />
+    </ReadGroup>
+
+    <!--
+      GROUP: Timer T4 ACC
+      Timer ACCUMULATED values. Grouped by SubElement=2.
+      Since T4:0.PRE and T4:0.ACC have different SubElements,
+      they are automatically separated into different physical requests,
+      which is required for correct structured addressing.
+    -->
+    <ReadGroup active="true" name="Timer T4 ACC">
+      <Elem name="T4_0_ACC" tagCode="T4_0_ACC" address="T4:0.ACC" dataType="ushort" />
+      <Elem name="T4_1_ACC" tagCode="T4_1_ACC" address="T4:1.ACC" dataType="ushort" />
+      <Elem name="T4_2_ACC" tagCode="T4_2_ACC" address="T4:2.ACC" dataType="ushort" />
+      <Elem name="T4_3_ACC" tagCode="T4_3_ACC" address="T4:3.ACC" dataType="ushort" />
+      <Elem name="T4_4_ACC" tagCode="T4_4_ACC" address="T4:4.ACC" dataType="ushort" />
+      <Elem name="T4_5_ACC" tagCode="T4_5_ACC" address="T4:5.ACC" dataType="ushort" />
+      <Elem name="T4_6_ACC" tagCode="T4_6_ACC" address="T4:6.ACC" dataType="ushort" />
+      <Elem name="T4_7_ACC" tagCode="T4_7_ACC" address="T4:7.ACC" dataType="ushort" />
+    </ReadGroup>
+
+    <!--
+      GROUP: Counter C5 PRE
+      Similar to Timers, Counter PRESET values.
+      SubElement=1 ensures they are batched together.
+    -->
+    <ReadGroup active="true" name="Counter C5 PRE">
+      <Elem name="C5_0_PRE" tagCode="C5_0_PRE" address="C5:0.PRE" dataType="ushort" />
+      <Elem name="C5_1_PRE" tagCode="C5_1_PRE" address="C5:1.PRE" dataType="ushort" />
+    </ReadGroup>
+
+    <!--
+      GROUP: Counter C5 ACC
+      Counter ACCUMULATED values. SubElement=2.
+    -->
+    <ReadGroup active="true" name="Counter C5 ACC">
+      <Elem name="C5_0_ACC" tagCode="C5_0_ACC" address="C5:0.ACC" dataType="ushort" />
+      <Elem name="C5_1_ACC" tagCode="C5_1_ACC" address="C5:1.ACC" dataType="ushort" />
+    </ReadGroup>
+
+  </ReadGroups>
+
+  <!--
+    COMMANDS (Telecontrol)
+    Write commands are defined separately. They use the same addressing
+    logic and support scaling and byte-order overrides.
+  -->
+  <Commands>
+    <Command name="Set N7_0" cmdCode="N7_0_WR" address="N7:0" dataType="ushort" scaling="0;65535;0;100" />
+    <Command name="Set N7_3" cmdCode="N7_3_WR" address="N7:3" dataType="ushort" scaling="0;65535;0;5000" />
+    <Command name="Set B3_0" cmdCode="B3_0_WR" address="B3:0" dataType="ushort" />
+    <Command name="Set F8_0" cmdCode="F8_0_WR" address="F8:0" dataType="float" />
+    <Command name="Set L20_0" cmdCode="L20_0_WR" address="L20:0" dataType="long" />
+  </Commands>
+</DeviceTemplate>
