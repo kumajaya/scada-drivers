@@ -20,6 +20,9 @@
 **/DrvSigPccc/
 **/DrvSig7/
 
+# Ignore deployment script
+copy-driver.ps1
+
 # Ignore Visual Studio temporary files
 .vs/
 *.user

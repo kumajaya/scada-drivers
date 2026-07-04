@@ -27,15 +27,23 @@
        The driver automatically detects bit-addressed elements
        (e.g., "B3:0/5"). It calculates the exact minimum number of
        16-bit words needed to cover the bit span and reads them efficiently
-       using raw word reads, ensuring robust communication.
+       using raw word reads.
 
     4. Data Type Mapping:
          - UShort    : 16-bit unsigned integer (word).
-         - Short     : 16-bit signed integer.
+         - Short     : 16-bit signed integer (use for N, S files).
          - Int/Long  : 32-bit signed integer (L file).
          - Float     : 32-bit IEEE 754 floating-point (F file).
          - String    : SLC/MicroLogix string file (ST file, 84 bytes).
          - Bool      : Single bit (extracted from word/bit addressing).
+
+       ⚠️ Important – Signed vs Unsigned for I/O/B Words
+         - N‑file and S‑file are genuinely signed values – use `short`
+           if you expect negative numbers, otherwise `ushort`.
+         - B‑file, I‑file, and O‑file are bit‑mapped words; always use
+           `ushort` – reading them as `short` will incorrectly apply
+           sign‑extension to bit 15, corrupting the value.
+         - For bit‑level elements (`address="B3:0/5"`), use `bool`.
 
     5. Scaling (Linear Scaling):
       Format: "minRaw;maxRaw;minEng;maxEng"
@@ -62,13 +70,21 @@
         scaling="-500;1500;-500;1500" (used for pressure/level with offset)
 
       If omitted, no scaling is applied (raw values are passed directly).
+
+    6. Bit Mnemonic Slash Notation (Timer/Counter/Control)
+       In addition to dot notation (e.g., "T4:0.PRE", "T4:0.ACC"),
+       the driver supports slash notation for status bits:
+         - Timer:   /EN, /TT, /DN
+         - Counter: /CU, /CD, /OV, /UN, /UA
+         - Control: /EN, /EU, /EM, /ER, /UL, /IN, /FD
+       Examples: "T4:0/EN", "C5:0/CU", "R6:0/ER"
     ======================================================================
   -->
 
   <ReadGroups>
 
     <!--
-      GROUP: Integer N7 (UShort)
+      GROUP: Integer N7 (UShort) – Unsigned interpretation
       Elements are perfectly contiguous (N7:0 to N7:7).
       With MaxMergeGap >= 0, these are merged into a single read request
       reading exactly 8 words (SpanCount=8) with no wasted slots.
@@ -85,10 +101,30 @@
     </ReadGroup>
 
     <!--
-      GROUP: Binary B3 (word)
+      GROUP: Integer N7 (Short) – Signed interpretation
+      For values that can be negative, use dataType="short".
+      These are also contiguous and will be merged into a single read.
+    -->
+    <ReadGroup active="true" name="Integer N7 (Short)">
+      <Elem name="N7_10" tagCode="N7_10" address="N7:10" dataType="short" />
+      <Elem name="N7_11" tagCode="N7_11" address="N7:11" dataType="short" />
+      <Elem name="N7_12" tagCode="N7_12" address="N7:12" dataType="short" />
+    </ReadGroup>
+
+    <!--
+      GROUP: Status S file – Signed
+      S-file values are signed. Use short if values can be negative.
+    -->
+    <ReadGroup active="true" name="Status S (Short)">
+      <Elem name="S_1" tagCode="S_1" address="S:1" dataType="short" />
+      <Elem name="S_2" tagCode="S_2" address="S:2" dataType="short" />
+    </ReadGroup>
+
+    <!--
+      GROUP: Binary B3 (word) – ALWAYS use ushort
       Even though these are displayed as bitmasks in the SCADA UI,
-      they are read as whole 16-bit words. They are perfectly contiguous
-      (B3:0 to B3:7), so they will be read in a single request.
+      they are read as whole 16-bit words. Using "short" here would
+      cause sign-extension on bit 15.
     -->
     <ReadGroup active="true" name="Binary B3 (word)">
       <Elem name="B3_0" tagCode="B3_0" address="B3:0" dataType="ushort" isBitMask="true" />
@@ -99,6 +135,33 @@
       <Elem name="B3_5" tagCode="B3_5" address="B3:5" dataType="ushort" isBitMask="true" />
       <Elem name="B3_6" tagCode="B3_6" address="B3:6" dataType="ushort" isBitMask="true" />
       <Elem name="B3_7" tagCode="B3_7" address="B3:7" dataType="ushort" isBitMask="true" />
+    </ReadGroup>
+
+    <!--
+      GROUP: Binary B3 – Bit-addressed individual BOOL
+      Use dataType="bool" for individual bits.
+    -->
+    <ReadGroup active="true" name="Binary B3 (bits)">
+      <Elem name="B3_0_0" tagCode="B3_0_0" address="B3:0/0" dataType="bool" />
+      <Elem name="B3_0_1" tagCode="B3_0_1" address="B3:0/1" dataType="bool" />
+      <Elem name="B3_0_2" tagCode="B3_0_2" address="B3:0/2" dataType="bool" />
+      <Elem name="B3_0_3" tagCode="B3_0_3" address="B3:0/3" dataType="bool" />
+    </ReadGroup>
+
+    <!--
+      GROUP: Input I file – ALWAYS use ushort (bit‑mapped)
+    -->
+    <ReadGroup active="true" name="Input I (word)">
+      <Elem name="I_0" tagCode="I_0" address="I:0" dataType="ushort" />
+      <Elem name="I_1" tagCode="I_1" address="I:1" dataType="ushort" />
+    </ReadGroup>
+
+    <!--
+      GROUP: Output O file – ALWAYS use ushort (bit‑mapped)
+    -->
+    <ReadGroup active="true" name="Output O (word)">
+      <Elem name="O_0" tagCode="O_0" address="O:0" dataType="ushort" />
+      <Elem name="O_1" tagCode="O_1" address="O:1" dataType="ushort" />
     </ReadGroup>
 
     <!--
@@ -138,11 +201,9 @@
     </ReadGroup>
 
     <!--
-      GROUP: Timer T4 PRE
+      GROUP: Timer T4 PRE (dot notation)
       Timer PRESET values. The driver sorts by SubElement.
       PRE has SubElement=1, so these are grouped together.
-      ACC has SubElement=2, so those are grouped separately.
-      This ensures efficient reading of Timer structured elements.
     -->
     <ReadGroup active="true" name="Timer T4 PRE">
       <Elem name="T4_0_PRE" tagCode="T4_0_PRE" address="T4:0.PRE" dataType="ushort" />
@@ -156,11 +217,8 @@
     </ReadGroup>
 
     <!--
-      GROUP: Timer T4 ACC
-      Timer ACCUMULATED values. Grouped by SubElement=2.
-      Since T4:0.PRE and T4:0.ACC have different SubElements,
-      they are automatically separated into different physical requests,
-      which is required for correct structured addressing.
+      GROUP: Timer T4 ACC (dot notation)
+      Timer ACCUMULATED values. SubElement=2.
     -->
     <ReadGroup active="true" name="Timer T4 ACC">
       <Elem name="T4_0_ACC" tagCode="T4_0_ACC" address="T4:0.ACC" dataType="ushort" />
@@ -174,9 +232,20 @@
     </ReadGroup>
 
     <!--
-      GROUP: Counter C5 PRE
-      Similar to Timers, Counter PRESET values.
-      SubElement=1 ensures they are batched together.
+      GROUP: Timer T4 – Status bits using slash notation
+      Supported: /EN, /TT, /DN
+    -->
+    <ReadGroup active="true" name="Timer T4 Status">
+      <Elem name="T4_0_EN" tagCode="T4_0_EN" address="T4:0/EN" dataType="bool" />
+      <Elem name="T4_0_TT" tagCode="T4_0_TT" address="T4:0/TT" dataType="bool" />
+      <Elem name="T4_0_DN" tagCode="T4_0_DN" address="T4:0/DN" dataType="bool" />
+      <Elem name="T4_1_EN" tagCode="T4_1_EN" address="T4:1/EN" dataType="bool" />
+      <Elem name="T4_1_TT" tagCode="T4_1_TT" address="T4:1/TT" dataType="bool" />
+      <Elem name="T4_1_DN" tagCode="T4_1_DN" address="T4:1/DN" dataType="bool" />
+    </ReadGroup>
+
+    <!--
+      GROUP: Counter C5 PRE (dot notation)
     -->
     <ReadGroup active="true" name="Counter C5 PRE">
       <Elem name="C5_0_PRE" tagCode="C5_0_PRE" address="C5:0.PRE" dataType="ushort" />
@@ -184,12 +253,52 @@
     </ReadGroup>
 
     <!--
-      GROUP: Counter C5 ACC
-      Counter ACCUMULATED values. SubElement=2.
+      GROUP: Counter C5 ACC (dot notation)
     -->
     <ReadGroup active="true" name="Counter C5 ACC">
       <Elem name="C5_0_ACC" tagCode="C5_0_ACC" address="C5:0.ACC" dataType="ushort" />
       <Elem name="C5_1_ACC" tagCode="C5_1_ACC" address="C5:1.ACC" dataType="ushort" />
+    </ReadGroup>
+
+    <!--
+      GROUP: Counter C5 – Status bits using slash notation
+      Supported: /CU, /CD, /OV, /UN, /UA
+    -->
+    <ReadGroup active="true" name="Counter C5 Status">
+      <Elem name="C5_0_CU" tagCode="C5_0_CU" address="C5:0/CU" dataType="bool" />
+      <Elem name="C5_0_CD" tagCode="C5_0_CD" address="C5:0/CD" dataType="bool" />
+      <Elem name="C5_0_OV" tagCode="C5_0_OV" address="C5:0/OV" dataType="bool" />
+      <Elem name="C5_0_UN" tagCode="C5_0_UN" address="C5:0/UN" dataType="bool" />
+      <Elem name="C5_0_UA" tagCode="C5_0_UA" address="C5:0/UA" dataType="bool" />
+    </ReadGroup>
+
+    <!--
+      GROUP: Control R6 LEN (dot notation)
+      Control file uses LEN and POS sub-elements.
+    -->
+    <ReadGroup active="true" name="Control R6 LEN">
+      <Elem name="R6_0_LEN" tagCode="R6_0_LEN" address="R6:0.LEN" dataType="ushort" />
+      <Elem name="R6_1_LEN" tagCode="R6_1_LEN" address="R6:1.LEN" dataType="ushort" />
+      <Elem name="R6_2_LEN" tagCode="R6_2_LEN" address="R6:2.LEN" dataType="ushort" />
+    </ReadGroup>
+
+    <ReadGroup active="true" name="Control R6 POS">
+      <Elem name="R6_0_POS" tagCode="R6_0_POS" address="R6:0.POS" dataType="ushort" />
+      <Elem name="R6_1_POS" tagCode="R6_1_POS" address="R6:1.POS" dataType="ushort" />
+    </ReadGroup>
+
+    <!--
+      GROUP: Control R6 – Status bits using slash notation
+      Supported: /EN, /EU, /EM, /ER, /UL, /IN, /FD
+    -->
+    <ReadGroup active="true" name="Control R6 Status">
+      <Elem name="R6_0_EN" tagCode="R6_0_EN" address="R6:0/EN" dataType="bool" />
+      <Elem name="R6_0_EU" tagCode="R6_0_EU" address="R6:0/EU" dataType="bool" />
+      <Elem name="R6_0_EM" tagCode="R6_0_EM" address="R6:0/EM" dataType="bool" />
+      <Elem name="R6_0_ER" tagCode="R6_0_ER" address="R6:0/ER" dataType="bool" />
+      <Elem name="R6_0_UL" tagCode="R6_0_UL" address="R6:0/UL" dataType="bool" />
+      <Elem name="R6_0_IN" tagCode="R6_0_IN" address="R6:0/IN" dataType="bool" />
+      <Elem name="R6_0_FD" tagCode="R6_0_FD" address="R6:0/FD" dataType="bool" />
     </ReadGroup>
 
   </ReadGroups>
@@ -198,6 +307,11 @@
     COMMANDS (Telecontrol)
     Write commands are defined separately. They use the same addressing
     logic and support scaling and byte-order overrides.
+
+    ⚠️ IMPORTANT – Write DataType Restrictions:
+      - Timer (T), Counter (C), Control (R): only bool, ushort, or short
+      - Other files: any type whose word count fits the file's element size
+      - For example: "Set R6_0_LEN" below uses ushort, which is allowed.
   -->
   <Commands>
     <Command name="Set N7_0" cmdCode="N7_0_WR" address="N7:0" dataType="ushort" scaling="0;65535;0;100" />
@@ -205,5 +319,9 @@
     <Command name="Set B3_0" cmdCode="B3_0_WR" address="B3:0" dataType="ushort" />
     <Command name="Set F8_0" cmdCode="F8_0_WR" address="F8:0" dataType="float" />
     <Command name="Set L20_0" cmdCode="L20_0_WR" address="L20:0" dataType="long" />
+    <Command name="Set R6_0_LEN" cmdCode="R6_0_LEN_WR" address="R6:0.LEN" dataType="ushort" />
+    <Command name="Set R6_0_POS" cmdCode="R6_0_POS_WR" address="R6:0.POS" dataType="ushort" />
+    <!-- Write to Timer status bit is allowed using bool -->
+    <Command name="Reset T4_0_EN" cmdCode="RESET_T4_0_EN" address="T4:0/EN" dataType="bool" />
   </Commands>
 </DeviceTemplate>

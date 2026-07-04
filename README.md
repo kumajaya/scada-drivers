@@ -12,7 +12,7 @@ A collection of communication drivers for [Rapid SCADA](https://rapidscada.org/)
 | Driver | Protocol / Devices | Key Feature | Status |
 |--------|-------------------|-------------|--------|
 | **DrvSigModbus** | Modbus RTU / TCP | Built-in Modbus enhanced with **driver‑level scaling** | ✅ **Free** (Unlimited) |
-| **DrvSigPccc** | Allen‑Bradley PCCC (SLC, MicroLogix, PLC-5) via DF1, EtherNet/IP, or CSPv4 | Full read/write with **read‑group aggregation** | 🔒 **Trial** (max 10 tags) |
+| **DrvSigPccc** | Allen‑Bradley PCCC (SLC, MicroLogix, PLC-5) via DF1, DF1Master, EtherNet/IP, or CSPv4 | Full read/write with **read‑group aggregation** & **pipelining** | 🔒 **Trial** (max 10 tags) |
 | **DrvSig7** | Siemens S7 (S7‑300, S7‑400, S7‑1200, S7‑1500) via ISO‑on‑TCP (Sharp7) | Full read/write with **multi‑area polling** | 🔒 **Trial** (max 10 tags) |
 
 ---
@@ -105,24 +105,61 @@ Unlike the standard Rapid SCADA Modbus driver, **DrvSigModbus** allows you to de
 
 ### 🔹 DrvSigPccc – Allen‑Bradley PCCC Driver
 
-Optimized for PCCC controllers with **automatic read‑group aggregation** for maximum performance.
+Optimized for PCCC controllers with **automatic read‑group aggregation** and **pipelining** on TCP‑based transports.
 
-**Key Features**:
-- ✅ **Physical Batching**: All `<Elem>` elements across all active `<ReadGroup>` containers are globally flattened and sorted by physical address.
-- ✅ **MaxMergeGap**: Controlled via line option `MaxMergeGap` (default: `8`). Larger values = more aggressive merging (fewer requests, but more wasted slots).
-- ✅ **Automatic Bit Detection**: Bit-addressed elements (e.g., `"B3:0/5"`) are automatically detected and handled efficiently.
-- ✅ **Structured Addressing**: Supports Timer (`T4:0.PRE`, `T4:0.ACC`) and Counter (`C5:0.PRE`, `C5:0.ACC`) sub-elements.
+#### Line Options (configured in Communication Line → Custom Options)
 
-**Data Type Mapping**:
+| Option | Default | Description |
+|--------|---------|-------------|
+| `Protocol` | `DF1` | `DF1` (point‑to‑point serial), `DF1Master` (RS‑485 multidrop), `EIP` (EtherNet/IP), or `CSP` (CSPv4) |
+| `MaxConcurrentRequests` | `2` (EIP/CSP) / `1` (DF1) | Number of PCCC requests allowed in flight simultaneously on TCP links. Increase to reduce round‑trip latency **if your PLC can handle it** (tested on ML1400 – ~2× speedup in Run mode). |
+| `MaxMergeGap` | `8` | How many unused words/bits can be skipped when merging adjacent addresses into one physical read. Larger values reduce the number of requests but waste some bandwidth. |
+| `Host` / `CspHost` | `192.168.1.10` | IP address for EIP or CSPv4. For CSPv4, use `CspHost` and `CspPort` (default: `2222`). |
+| `LsapControlByte` | `0` | For CSPv4 only – set to `0x05` when communicating via RSLinx. |
+| `ComPort`, `BaudRate`, `Parity` | `COM1`, `19200`, `None` | Serial settings for DF1/DF1Master. |
 
-| Data Type | Description |
-|-----------|-------------|
-| `ushort` | 16‑bit unsigned integer (word) |
-| `short` | 16‑bit signed integer |
-| `int` / `long` | 32‑bit signed integer (L file) |
-| `float` | 32‑bit IEEE 754 floating‑point (F file) |
-| `string` | SLC/MicroLogix string file (ST file, 84 bytes) |
-| `bool` | Single bit (extracted from word/bit addressing) |
+**DF1Master‑specific**:
+- `SlaveAddress` (default `1`)
+- `Rs485Mode` (0 = RTS, 1 = DTR, 2 = Disabled)
+- `EchoSuppression` (default `false`)
+- `Rs485AssertDelayMs`, `Rs485DeassertDelayMs` (default `1`, `5` ms)
+
+#### Read‑Group Aggregation (Physical Batching)
+
+- All `<Elem>` elements across **all active `<ReadGroup>` containers** are globally flattened and sorted by physical address.
+- Elements from different template groups that sit next to each other in PLC memory are merged into a single PCCC request.
+- `MaxMergeGap` controls how many unused slots can be skipped to keep requests few.
+
+#### Address Syntax – Full Support
+
+| File Type | Examples | Notes |
+|-----------|----------|-------|
+| **Binary (B)** | `B3:0`, `B3:0/5` | Always use `ushort` for word‑level reads to avoid sign‑extension (see below). |
+| **Integer (N)** | `N7:0`, `N7:5` | Can be `ushort` or `short` – N‑file is genuinely signed. |
+| **Status (S)** | `S:1`, `S2:3` | `S` file is signed; use `short` if values can be negative. |
+| **Input (I)** | `I:0`, `I1:2` | Use `ushort` – bit‑mapped words, no sign interpretation. |
+| **Output (O)** | `O:0`, `O1:1` | Use `ushort` – same as `I`. |
+| **Float (F)** | `F8:0` | 32‑bit IEEE 754; use `float`. |
+| **Long (L)** | `L20:0` | 32‑bit signed integer; use `int` or `long`. |
+| **String (ST)** | `ST21:0` | SLC‑style ASCII string (84 bytes). Use `string`. |
+| **Timer (T)** | `T4:0.PRE`, `T4:0.ACC`, `T4:0/EN`, `T4:0/DN` | Sub‑elements via dot (`.PRE`, `.ACC`) or slash (`/EN`, `/DN`, `/TT`) for status bits. |
+| **Counter (C)** | `C5:0.PRE`, `C5:0.ACC`, `C5:0/CU`, `C5:0/DN` | Same as Timer. |
+| **Control (R)** | `R6:0.LEN`, `R6:0.POS`, `R6:0/EN`, `R6:0/EU`, `R6:0/ER` | Full support for Control file sub‑elements (LEN/POS) and all status bits (`/EN`, `/EU`, `/EM`, `/ER`, `/UL`, `/IN`, `/FD`). |
+
+**⚠️ Important – Signed vs Unsigned for I/O/B Words**
+
+- **N‑file and S‑file** are genuinely **signed** 16‑bit values – use `short` if you expect negative numbers, otherwise `ushort`.
+- **B‑file, I‑file, and O‑file** are **bit‑mapped words**; always use `ushort` – reading them as `short` will incorrectly apply sign‑extension to bit 15, corrupting the value.
+- For bit‑level elements (`address="B3:0/5"`), the driver automatically handles extraction, and the `dataType` should be `bool`.
+
+#### Commands (Write) – Restrictions for Timer/Counter/Control
+
+When configuring a write command (`<Command>`), the `dataType` choice is **restricted** to avoid writing past the intended single word and corrupting adjacent sub‑elements:
+
+- **Timer (T), Counter (C), Control (R)** – only `bool`, `ushort`, or `short` are allowed.
+- Other files (N, B, I, O, F, L) – any type whose word count fits the file’s element size (e.g., `float`, `int`, `long`) is allowed.
+
+This restriction is enforced at template load time, so you won’t see invalid options in the UI.
 
 **Example Configuration**:
 ```xml
@@ -134,6 +171,11 @@ Optimized for PCCC controllers with **automatic read‑group aggregation** for m
 <ReadGroup active="true" name="Timer T4 PRE">
   <Elem name="T4_0_PRE" tagCode="T4_0_PRE" address="T4:0.PRE" dataType="ushort" />
   <Elem name="T4_1_PRE" tagCode="T4_1_PRE" address="T4:1.PRE" dataType="ushort" />
+</ReadGroup>
+
+<ReadGroup active="true" name="Control R6 LEN">
+  <Elem name="R6_0_LEN" tagCode="R6_0_LEN" address="R6:0.LEN" dataType="ushort" />
+  <Elem name="R6_1_LEN" tagCode="R6_1_LEN" address="R6:1.LEN" dataType="ushort" />
 </ReadGroup>
 ```
 
