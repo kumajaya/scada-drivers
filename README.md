@@ -146,6 +146,14 @@ Optimized for PCCC controllers with **automatic read‑group aggregation** and *
 | **Counter (C)** | `C5:0.PRE`, `C5:0.ACC`, `C5:0/CU`, `C5:0/DN` | Same as Timer. |
 | **Control (R)** | `R6:0.LEN`, `R6:0.POS`, `R6:0/EN`, `R6:0/EU`, `R6:0/ER` | Full support for Control file sub‑elements (LEN/POS) and all status bits (`/EN`, `/EU`, `/EM`, `/ER`, `/UL`, `/IN`, `/FD`). |
 
+#### Scaling
+
+**Format**: `"minRaw;maxRaw;minEng;maxEng"` (same as DrvSigModbus).  
+Applied **after reading** (raw → engineering) and **before writing** (engineering → raw via inverse scaling). Ignored for `bool` and `string` types.
+
+**Example**:  
+`scaling="0;65535;0;100"` maps a raw value of 0–65535 to 0–100 engineering units.
+
 **⚠️ Important – Signed vs Unsigned for I/O/B Words**
 
 - **N‑file and S‑file** are genuinely **signed** 16‑bit values – use `short` if you expect negative numbers, otherwise `ushort`.
@@ -158,6 +166,7 @@ When configuring a write command (`<Command>`), the `dataType` choice is **restr
 
 - **Timer (T), Counter (C), Control (R)** – only `bool`, `ushort`, or `short` are allowed.
 - Other files (N, B, I, O, F, L) – any type whose word count fits the file’s element size (e.g., `float`, `int`, `long`) is allowed.
+- Apply **inverse scaling** (engineering → raw) before writing if applicable.
 
 This restriction is enforced at template load time, so you won’t see invalid options in the UI.
 
