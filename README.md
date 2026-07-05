@@ -141,7 +141,7 @@ Optimized for PCCC controllers with **automatic read‑group aggregation** and *
 | **Output (O)** | `O:0`, `O1:1` | Use `ushort` – same as `I`. |
 | **Float (F)** | `F8:0` | 32‑bit IEEE 754; use `float`. |
 | **Long (L)** | `L20:0` | 32‑bit signed integer; use `int` or `long`. |
-| **String (ST)** | `ST21:0` | SLC‑style ASCII string (84 bytes). Use `string`. |
+| **String (ST)** | `ST21:0` | SLC‑style ASCII string (84 bytes). Use `string`. Read‑only – not available for write commands. |
 | **Timer (T)** | `T4:0.PRE`, `T4:0.ACC`, `T4:0/EN`, `T4:0/DN` | Sub‑elements via dot (`.PRE`, `.ACC`) or slash (`/EN`, `/DN`, `/TT`) for status bits. |
 | **Counter (C)** | `C5:0.PRE`, `C5:0.ACC`, `C5:0/CU`, `C5:0/DN` | Same as Timer. |
 | **Control (R)** | `R6:0.LEN`, `R6:0.POS`, `R6:0/EN`, `R6:0/EU`, `R6:0/ER` | Full support for Control file sub‑elements (LEN/POS) and all status bits (`/EN`, `/EU`, `/EM`, `/ER`, `/UL`, `/IN`, `/FD`). |
@@ -160,15 +160,9 @@ Applied **after reading** (raw → engineering) and **before writing** (engineer
 - **B‑file, I‑file, and O‑file** are **bit‑mapped words**; always use `ushort` – reading them as `short` will incorrectly apply sign‑extension to bit 15, corrupting the value.
 - For bit‑level elements (`address="B3:0/5"`), the driver automatically handles extraction, and the `dataType` should be `bool`.
 
-#### Commands (Write) – Restrictions for Timer/Counter/Control
+#### Commands (Write)
 
-When configuring a write command (`<Command>`), the `dataType` choice is **restricted** to avoid writing past the intended single word and corrupting adjacent sub‑elements:
-
-- **Timer (T), Counter (C), Control (R)** – only `bool`, `ushort`, or `short` are allowed.
-- Other files (N, B, I, O, F, L) – any type whose word count fits the file’s element size (e.g., `float`, `int`, `long`) is allowed.
-- Apply **inverse scaling** (engineering → raw) before writing if applicable.
-
-This restriction is enforced at template load time, so you won’t see invalid options in the UI.
+Write commands are defined in the `<Commands>` section. The `dataType` choice is restricted to what each file type can accept, so you won't see invalid options in the command editor. **String (ST) files are read‑only** – a write command targeting an ST address is rejected. **Inverse scaling** (engineering → raw) is applied before writing where a `scaling` attribute is present.
 
 **Example Configuration**:
 ```xml
