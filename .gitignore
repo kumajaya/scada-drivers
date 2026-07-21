@@ -20,6 +20,9 @@
 **/DrvSigPccc/
 **/DrvSig7/
 
+# Ignore license tool
+**/LicenseTool/
+
 # Ignore deployment script
 copy-driver.ps1
 
