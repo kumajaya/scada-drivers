@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## 6.0.2 – 2026-07-21
 
+### Added – DrvSigModbus
+- **Scaling for all numeric types** – Scaling is now supported for `UInt`, `Int`, `ULong`, `Long`, `Float`, and `Double` (previously limited to `UShort` and `Short`). Scaling is explicitly excluded for `Bool` and `Undefined` types.
+
+### Changed – DrvSigModbus
+- **Optimize for .NET 8** – Common and Logic projects now target `net8.0` (previously `netstandard2.0`), unlocking performance improvements and modern APIs.
+- **Span‑based operations** – Replaced array-based operations with `Span<T>` and `ReadOnlySpan<byte>` for CRC16/LRC calculations, byte-order reordering (`ApplyByteOrder`), and data conversion, reducing heap allocations.
+- **Parsed scaling cache** – Scaling strings are now parsed once and cached per element/command instance, eliminating repeated parsing during polling.
+- **Zero‑allocation byte ordering** – `ElemGroup.GetElemVal` now uses direct byte mapping according to `byteOrder`, avoiding intermediate array allocations.
+- **BinaryPrimitives for commands** – `ModbusCmd.SetCmdData` writes data directly in big‑endian using `BinaryPrimitives.WriteXxxBigEndian`, removing the need for `Array.Reverse`.
+- **Convert.ToHexString in ASCII mode** – Replaced manual `StringBuilder` loop with `Convert.ToHexString` for building request strings in ASCII mode.
+- **CRC tables as ReadOnlySpan** – CRC lookup tables are now static `ReadOnlySpan<byte>` properties, preventing heap allocation at static construction.
+- **ArgumentNullException.ThrowIfNull** – Replaced explicit null checks with the modern, concise `ThrowIfNull` pattern.
+- **Remove redundant Array.Clear** – Removed unnecessary `Array.Clear` call in `ElemGroup.InitReqPDU` (new `byte[]` is already zero‑initialized).
+- **Initialize Data in InitReqPDU** – Ensured `Data` is initialized with a zeroed array if null, preventing `ArgumentNullException` when commands are created from element configurations.
+- **Improve ULong/Long range validation** – Replaced `double` comparisons with `decimal` (with overflow handling) for accurate boundary checks in `ModbusCmd.SetCmdData`.
+
 ### Changed – DrvSigPccc
 - **CheckSumOptions** – Updated namespace from `PCCC.Pccc` to `PCCC.Core` to align with PCCCComm library restructuring.
 
