@@ -78,6 +78,23 @@
          - Counter: /CU, /CD, /OV, /UN, /UA
          - Control: /EN, /EU, /EM, /ER, /UL, /IN, /FD
        Examples: "T4:0/EN", "C5:0/CU", "R6:0/ER"
+
+    7. Zero Confirmation (ZeroConfirmCycles):
+       A PLC-5 serves communication during the program scan, so a read can
+       catch an intermediate value written by ladder logic or a block
+       transfer (e.g. a file cleared and refilled) and return exactly 0 for
+       one poll cycle.
+         - Line option "ZeroConfirmCycles" (Extra Config, default: 0 = off)
+           applies to all read groups.
+         - A read group can override it with the attribute
+           zeroConfirmCycles="n" ("Override zero confirm cycles" in the
+           editor); 0 turns the filter off for that group.
+       When enabled, a numeric tag that drops from a non-zero value to
+       exactly 0 keeps its previous value until 0 has been read n further
+       cycles in a row. Bool, String and single-bit elements are not
+       filtered. Each held-back zero and its outcome is written to the
+       device log. Real zeros are passed on n cycles later, so limit the
+       override to the groups of the affected rack or module.
     ======================================================================
   -->
 
@@ -169,8 +186,10 @@
       Elements are contiguous (F8:0 to F8:7). Even though Float takes
       4 bytes (2 words) per element, the driver sorts and batches them
       correctly, reading a contiguous block from the PLC in one request.
+      zeroConfirmCycles="1" holds back a single-cycle drop to 0 for these
+      tags only (see principle 7); other groups follow the line option.
     -->
-    <ReadGroup active="true" name="Float F8">
+    <ReadGroup active="true" name="Float F8" zeroConfirmCycles="1">
       <Elem name="F8_0" tagCode="F8_0" address="F8:0" dataType="float" />
       <Elem name="F8_1" tagCode="F8_1" address="F8:1" dataType="float" />
       <Elem name="F8_2" tagCode="F8_2" address="F8:2" dataType="float" />

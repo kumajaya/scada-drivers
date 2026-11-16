@@ -21,13 +21,14 @@
     Example:
       scaling="0;65535;0;100"
         Raw 0      -> Eng 0.0
-        Raw 32767  -> Eng 50.0
+        Raw 32768  -> Eng 50.0 (approx.)
         Raw 65535  -> Eng 100.0
 
       scaling="0;4095;0;100"   (used for 12-bit ADC values)
       scaling="-500;1500;-500;1500" (used for pressure/level with offset)
 
     If omitted, no scaling is applied (raw values are passed directly).
+    Scaling is ignored for Bool elements and for elements with a bit mask.
     ======================================================================
   -->
   <Options>
@@ -93,5 +94,11 @@
     <Cmd dataBlock="Coils" multiple="false" address="114" cmdNum="15" cmdCode="Reset t4_min" name="Reset t4_min" />
     <Cmd dataBlock="Coils" multiple="false" address="115" cmdNum="16" cmdCode="Reset t5_min" name="Reset t5_min" />
     <Cmd dataBlock="Coils" multiple="false" address="116" cmdNum="17" cmdCode="Reset t6_min" name="Reset t6_min" />
+    <!--
+      Write a setpoint with reverse scaling (Engineering -> Raw):
+      sending 25.0 writes Raw 16384 (approx.) to holding register 30
+      with Write Single Register (multiple="false").
+    -->
+    <Cmd dataBlock="HoldingRegisters" multiple="false" address="30" elemType="ushort" scaling="0;65535;0;100" cmdNum="21" cmdCode="Set t_sp" name="Set t_sp" />
   </Cmds>
 </DeviceTemplate>
