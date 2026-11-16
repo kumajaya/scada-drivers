@@ -93,13 +93,26 @@ Unlike the standard Rapid SCADA Modbus driver, **DrvSigModbus** allows you to de
 
 **Formula**: `Engineering = (Raw - minRaw) × (maxEng - minEng) / (maxRaw - minRaw) + minEng`
 
+**Scaling Rules**:
+- Applied **after reading** (raw → engineering) and **before writing** (engineering → raw via inverse scaling), including single-register writes (`multiple="false"`).
+- Ignored for **bit-mask** elements – the raw bits are passed unchanged.
+- A malformed scaling string is marked red in the template editor; at runtime it is ignored (the value is passed unscaled) and polling continues.
+- Command values that are NaN, infinite, or beyond the range of `float` are rejected.
+
+**Command Example**:
+```xml
+<!-- Setpoint 0-100 engineering units → 0-65535 raw, written with Write Single Register -->
+<Cmd dataBlock="HoldingRegisters" multiple="false" address="30" elemType="ushort"
+     scaling="0;65535;0;100" cmdNum="21" cmdCode="Set t_sp" name="Set t_sp" />
+```
+
 **Supported Data Blocks**:
 - `Coils` (read/write)
 - `HoldingRegisters` (read/write)
 - `InputRegisters` (read‑only)
 - `DiscreteInputs` (read‑only)
 
-**Sample Template**: See `DrvSigModbus_Example.xml` in the repository.
+**Sample Template**: See [`Templates/DrvSigModbus_Example.xml`](Templates/DrvSigModbus_Example.xml).
 
 ---
 
@@ -114,6 +127,7 @@ Optimized for PCCC controllers with **automatic read‑group aggregation** and *
 | `Protocol` | `DF1` | `DF1` (point‑to‑point serial), `DF1Master` (RS‑485 multidrop), `EIP` (EtherNet/IP), or `CSP` (CSPv4) |
 | `MaxConcurrentRequests` | `2` (EIP/CSP) / `1` (DF1) | Number of PCCC requests allowed in flight simultaneously on TCP links. Increase to reduce round‑trip latency **if your PLC can handle it** (tested on ML1400 – ~2× speedup in Run mode). |
 | `MaxMergeGap` | `8` | How many unused words/bits can be skipped when merging adjacent addresses into one physical read. Larger values reduce the number of requests but waste some bandwidth. |
+| `ZeroConfirmCycles` | `0` (off) | Number of further cycles a drop from non-zero to exactly 0 must be confirmed before it is published (0–10). Default for all read groups; can be overridden per group. See [Zero Confirmation](#zero-confirmation). |
 | `Host` / `CspHost` | `192.168.1.10` | IP address for EIP or CSPv4. For CSPv4, use `CspHost` and `CspPort` (default: `2222`). |
 | `LsapControlByte` | `0` | For CSPv4 only – set to `0x05` when communicating via RSLinx. |
 | `ComPort`, `BaudRate`, `Parity` | `COM1`, `19200`, `None` | Serial settings for DF1/DF1Master. |
@@ -129,6 +143,37 @@ Optimized for PCCC controllers with **automatic read‑group aggregation** and *
 - All `<Elem>` elements across **all active `<ReadGroup>` containers** are globally flattened and sorted by physical address.
 - Elements from different template groups that sit next to each other in PLC memory are merged into a single PCCC request.
 - `MaxMergeGap` controls how many unused slots can be skipped to keep requests few.
+- A timeout or an error reported by the PLC (e.g. wrong address or file size) fails only the affected request; its tags become undefined while the rest keep updating. Only link errors and repeated timeouts close the connection and trigger a reconnect.
+
+#### Zero Confirmation
+
+Some PLC-5 data briefly reads exactly 0 for one scan while ladder logic or a block transfer (e.g. a Flex I/O BTR) updates it. Because the value is valid, it reaches SCADA as a real 0 and appears as a dip in trends and alarms.
+
+When `ZeroConfirmCycles` is set to `n`, a numeric tag that drops from a non-zero value to exactly 0 keeps its previous value until 0 has been read `n` further cycles in a row:
+- If a non-zero value returns within `n` cycles, the zero is discarded.
+- If 0 is still read after `n` cycles, it is passed on. Real zeros are therefore delayed by `n` cycles.
+- `bool`, `string` and single-bit elements are not filtered.
+
+The line option is the default for every read group. A `<ReadGroup>` can override it with the `zeroConfirmCycles` attribute ("Override zero confirm cycles" in the template editor), so the filter can be limited to the tags of an affected rack or module:
+
+```xml
+<!-- Filter only the tags fed by the affected I/O module -->
+<ReadGroup active="true" name="F14 22-25 Rack 3" zeroConfirmCycles="1">
+  <Elem name="FT101" tagCode="FT101" address="F14:22" dataType="float" />
+  <Elem name="PT102" tagCode="PT102" address="F14:23" dataType="float" />
+</ReadGroup>
+
+<!-- Other groups use the line option (0 = off) -->
+<ReadGroup active="true" name="F14 26-49" />
+```
+
+Every held-back zero and its outcome is written to the device log:
+```
+Zero from 'F14:22' (FT101) held back (1/1), previous raw value 152.3
+Zero from 'F14:22' (FT101) discarded after 1 held cycle(s), raw value 151.9
+```
+
+> Zero confirmation hides the symptom; the cause should still be fixed at the source (e.g. gate the ladder copy on a valid block transfer, or check the I/O module supply and wiring).
 
 #### Address Syntax – Full Support
 
@@ -164,6 +209,9 @@ Applied **after reading** (raw → engineering) and **before writing** (engineer
 
 Write commands are defined in the `<Commands>` section. The `dataType` choice is restricted to what each file type can accept, so you won't see invalid options in the command editor. **String (ST) files are read‑only** – a write command targeting an ST address is rejected. **Inverse scaling** (engineering → raw) is applied before writing where a `scaling` attribute is present.
 
+- 32-bit values (`int`, `long`) are rounded and range-checked before writing; out-of-range values are rejected.
+- Bit writes (e.g. `B3:0/5`, `T4:0/EN`) on SLC 500 and MicroLogix use **Masked Write** (FNC 0xAB), so other bits in the same word are not touched. The driver falls back to the previous method if the controller does not support it.
+
 **Example Configuration**:
 ```xml
 <ReadGroup active="true" name="Integer N7 (UShort)">
@@ -182,7 +230,7 @@ Write commands are defined in the `<Commands>` section. The `dataType` choice is
 </ReadGroup>
 ```
 
-**Sample Template**: See `DrvSigPccc_Example.xml` in the repository.
+**Sample Template**: See [`Templates/DrvSigPccc_Example.xml`](Templates/DrvSigPccc_Example.xml).
 
 ---
 
@@ -203,6 +251,7 @@ Optimized for S7‑300, S7‑400, S7‑1200, and S7‑1500 PLCs via ISO‑on‑T
 | `Timeout` | `1000` | Connection, send, and receive timeout in milliseconds. |
 | `UseReadMultiVars` | `false` | If `true`, uses `ReadMultiVars` (chunked); if `false`, uses `ReadArea` (one block per DB/area). |
 | `MaxItemsPerMultiVar` | `18` | Maximum items per `ReadMultiVars` call. Used only when `UseReadMultiVars = true`. |
+| `VerboseLog` | `false` | If `true`, read timing is logged every cycle. Otherwise it is logged on the first cycle and after recovery only. Not shown in the UI – add it to the line's custom options. |
 
 ---
 
@@ -353,13 +402,16 @@ Write commands are defined in the `<Cmds>` section. Each `<Cmd>` is dispatched b
 - **Bit addressing**: For `Bool` elements, `byteOffset` points to the containing byte, and `bitIndex` selects the bit (0‑7). For `ReadArea` mode, the driver computes a bit‑start address internally; for `ReadMultiVars`, it passes the bit start directly to Sharp7.
 - **String validation**: Text length is checked **before** write; if it exceeds `strLen`, the write is rejected with a log message.
 - **Inverse scaling**: For numeric commands, scaling is reversed (engineering → raw) before encoding. This ensures that the PLC receives the correct raw value.
+- **Integer and Bool commands**: Integer values are rounded (not truncated) and NaN is rejected; Bool writes send `0x00`/`0x01`.
+- **Error handling**: ISO framing errors (invalid PDU, invalid data size, invalid PLC answer) trigger a reconnect. Errors that will not go away on retry (bad address, item not available, size mismatch) are not retried.
+- **Empty groups**: An `<ElemGroup>` without elements is skipped; the template editor reports empty groups and overlapping elements.
 - **PDU budget**: With `ReadArea`, the driver does **not** enforce a hard limit – `ReadArea` auto‑splits. However, a warning is logged if a group exceeds 222 bytes (conservative). With `ReadMultiVars`, chunking is controlled by `MaxItemsPerMultiVar`.
 
 ---
 
 ### Sample Template
 
-See `DrvSig7_Example.xml` in the repository for a complete working example.
+See [`Templates/DrvSig7_Example.xml`](Templates/DrvSig7_Example.xml) for a complete working example.
 
 ---
 
